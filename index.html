@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>GTM Company Research Agent</title>
+<style>
+  :root {
+    --bg: #0D1117;
+    --surface: #161B22;
+    --surface-hover: #1C2333;
+    --border: #2A3142;
+    --accent: #3DDC97;
+    --accent-dim: #2A9D6F;
+    --text-primary: #E6EDF3;
+    --text-secondary: #8B96A5;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text-primary);
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 60px 20px 100px;
+  }
+
+  .header {
+    margin-bottom: 32px;
+  }
+
+  h1 {
+    font-size: 26px;
+    font-weight: 700;
+    margin: 0 0 6px;
+    background: linear-gradient(90deg, var(--accent), #5EEAD4);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .subtitle {
+    color: var(--text-secondary);
+    font-size: 14px;
+    margin: 0;
+  }
+
+  .search-row {
+    display: flex;
+    gap: 10px;
+    margin: 28px 0;
+  }
+
+  input {
+    flex: 1;
+    padding: 14px 16px;
+    font-size: 15px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text-primary);
+    outline: none;
+    transition: border-color 0.15s ease;
+  }
+
+  input::placeholder {
+    color: var(--text-secondary);
+  }
+
+  input:focus {
+    border-color: var(--accent);
+  }
+
+  button {
+    background: var(--accent);
+    color: #06251A;
+    border: none;
+    padding: 14px 24px;
+    border-radius: 10px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease, transform 0.1s ease;
+    min-width: 110px;
+  }
+
+  button:hover:not(:disabled) {
+    background: #5EEAD4;
+  }
+
+  button:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+
+  button:disabled {
+    background: var(--border);
+    color: var(--text-secondary);
+    cursor: not-allowed;
+  }
+
+  #status {
+    font-size: 13px;
+    color: var(--accent);
+    min-height: 18px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .spinner {
+    width: 13px;
+    height: 13px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  #error-box {
+    background: rgba(248, 81, 73, 0.1);
+    border: 1px solid rgba(248, 81, 73, 0.4);
+    color: #F87171;
+    padding: 14px 16px;
+    border-radius: 10px;
+    margin-top: 12px;
+    font-size: 14px;
+    display: none;
+  }
+
+  #results {
+    margin-top: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .field {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 18px;
+    animation: fadeIn 0.35s ease both;
+  }
+
+  .field:hover {
+    background: var(--surface-hover);
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .field-label {
+    font-weight: 600;
+    color: var(--accent);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin-bottom: 8px;
+  }
+
+  .field-value {
+    font-size: 14.5px;
+    line-height: 1.6;
+    color: var(--text-primary);
+    white-space: pre-wrap;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>GTM Intelligence Agent</h1>
+  <p class="subtitle">Autonomous company research, powered by Groq + live web search</p>
+</div>
+
+<div class="search-row">
+  <input type="text" id="company-input" placeholder="Enter a company name, e.g. Anthropic" />
+  <button id="submit-btn" onclick="runResearch()">Research</button>
+</div>
+
+<p id="status"></p>
+<div id="error-box"></div>
+<div id="results"></div>
+
+<script>
+const API_URL = "http://127.0.0.1:5000/api/research";
+const PATIENCE_MESSAGE_DELAY_MS = 30000;
+const COOLDOWN_DURATION_MS = 150000; // 2.5 minutes;
+
+const FIELD_LABELS = {
+  summary: "Summary",
+  recent_news: "Recent News",
+  employee_estimate: "Employee Estimate",
+  industry: "Industry",
+  suggested_talking_points: "Suggested Talking Points",
+  draft_outreach_message: "Draft Outreach Message"
+};
+
+let cooldownIntervalId = null;
+
+document.getElementById("company-input").addEventListener("keydown", (event) => {
+  if (event.key === "Enter") runResearch();
+});
+
+async function runResearch() {
+  const companyInput = document.getElementById("company-input");
+  const submitButton = document.getElementById("submit-btn");
+  const statusText = document.getElementById("status");
+  const errorBox = document.getElementById("error-box");
+  const resultsContainer = document.getElementById("results");
+
+  if (submitButton.disabled) return;
+
+  const companyName = companyInput.value.trim();
+  if (!companyName) return;
+
+  submitButton.disabled = true;
+  submitButton.textContent = "Research";
+  statusText.innerHTML = '<span class="spinner"></span> Researching, this can take 10 to 20 seconds...';
+  errorBox.style.display = "none";
+  resultsContainer.innerHTML = "";
+
+  const patienceTimer = setTimeout(() => {
+    statusText.innerHTML = '<span class="spinner"></span> Still working, larger or less common companies can take a little longer...';
+  }, PATIENCE_MESSAGE_DELAY_MS);
+
+  try {
+    const response = await fetch(API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ company_name: companyName })
+    });
+
+    const briefData = await response.json();
+
+    if (!response.ok) {
+      throw new Error(briefData.error || "Something went wrong.");
+    }
+
+    renderBrief(briefData);
+    statusText.textContent = "";
+  } catch (err) {
+    errorBox.textContent = err.message;
+    errorBox.style.display = "block";
+    statusText.textContent = "";
+  } finally {
+    clearTimeout(patienceTimer);
+    startCooldown(submitButton);
+  }
+}
+
+function startCooldown(submitButton) {
+  // A client-side cooldown between searches isn't a substitute for real rate
+  // limiting, but it prevents accidentally stacking requests faster than the
+  // backend's own multi-round tool-calling can clear, which is what was
+  // triggering Groq's per-minute limit during normal manual testing.
+  let secondsRemaining = Math.ceil(COOLDOWN_DURATION_MS / 1000);
+  submitButton.textContent = `Wait ${secondsRemaining}s`;
+
+  cooldownIntervalId = setInterval(() => {
+    secondsRemaining -= 1;
+    if (secondsRemaining <= 0) {
+      clearInterval(cooldownIntervalId);
+      submitButton.disabled = false;
+      submitButton.textContent = "Research";
+    } else {
+      submitButton.textContent = `Wait ${secondsRemaining}s`;
+    }
+  }, 1000);
+}
+
+function renderBrief(briefData) {
+  const resultsContainer = document.getElementById("results");
+  resultsContainer.innerHTML = "";
+
+  Object.keys(FIELD_LABELS).forEach((key, index) => {
+    if (!briefData[key]) return;
+
+    const fieldDiv = document.createElement("div");
+    fieldDiv.className = "field";
+    fieldDiv.style.animationDelay = `${index * 60}ms`;
+    fieldDiv.innerHTML = `
+      <div class="field-label">${FIELD_LABELS[key]}</div>
+      <div class="field-value">${briefData[key]}</div>
+    `;
+    resultsContainer.appendChild(fieldDiv);
+  });
+}
+</script>
+
+</body>
+</html>
