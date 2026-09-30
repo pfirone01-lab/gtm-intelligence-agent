@@ -1,6 +1,8 @@
 import os
 import time
 import logging
+import smtplib
+from email.mime.text import MIMEText
 
 import httpx
 import requests
@@ -18,10 +20,14 @@ TAVILY_VALID_TIME_RANGES = {"day", "week", "month", "year"}
 SUPABASE_MAX_RETRIES = 3
 SUPABASE_RETRY_BACKOFF_SECONDS = 2
 
+SMTP_HOST = "smtp.gmail.com"
+SMTP_PORT = 587
+
 
 def get_current_time() -> str:
     from datetime import datetime
     return f"The current date and time is {datetime.now().strftime('%B %d, %Y, %I:%M:%S %p')}"
+
 
 def tavily_search(query: str, time_range: str = "none") -> str:
     tavily_client = TavilyClient(api_key=os.environ["TAVILY_API_KEY"])
@@ -83,3 +89,30 @@ def query_supabase(sql: str) -> str:
     supabase_client = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_KEY"])
     query_result = supabase_client.rpc("execute_sql", {"query": sql}).execute()
     return str(query_result.data)
+
+
+def send_email(subject: str, body: str, recipient_email: str) -> str:
+    sender_email = os.environ["GMAIL_SENDER_ADDRESS"]
+    sender_app_password = os.environ["GMAIL_APP_PASSWORD"]
+
+    # A Gmail App Password is used instead of full OAuth here specifically
+    # because this function runs unattended inside GitHub Actions, where no
+    # browser is available to complete an interactive OAuth consent flow.
+    message = MIMEText(body)
+    message["Subject"] = subject
+    message["From"] = sender_email
+    message["To"] = recipient_email
+
+    try:
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as smtp_connection:
+            smtp_connection.starttls()
+            smtp_connection.login(sender_email, sender_app_password)
+            smtp_connection.send_message(message)
+    except smtplib.SMTPAuthenticationError as auth_error:
+        logger.error("Gmail authentication failed, check GMAIL_APP_PASSWORD: %s", auth_error)
+        raise
+    except smtplib.SMTPException as smtp_error:
+        logger.error("Failed to send email to %s: %s", recipient_email, smtp_error)
+        raise
+
+    return f"Email sent to {recipient_email}."

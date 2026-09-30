@@ -1,5 +1,7 @@
-from core.agent import client
-from core.tools import query_supabase
+import os
+
+from core.agent import create_chat_completion
+from core.tools import query_supabase, send_email
 
 SYSTEM_PROMPT = """You are a GTM pipeline analyst. You will be given raw lead data
 from the most recent 7-day period and the 7 days before that. Compare the two
@@ -7,7 +9,8 @@ periods and write 3 to 5 short sentences a sales manager could read in ten secon
 Call out anything that changed meaningfully: lead volume, conversion rate by source,
 or average score. Do not just repeat the numbers, say what they mean."""
 
-def run_pipeline_check():
+
+def run_pipeline_check() -> str:
     this_week_sql = """
         SELECT lead_source, COUNT(*) as total,
                AVG(CASE WHEN status = 'Closed Won' THEN 1 ELSE 0 END) as conversion_rate,
@@ -34,12 +37,16 @@ def run_pipeline_check():
         {"role": "user", "content": f"Most recent 7 days: {this_week_data}\n\nPrior 7 days: {last_week_data}"}
     ]
 
-    response = client.chat.completions.create(
-        model="openai/gpt-oss-20b",
-        messages=messages
+    response = create_chat_completion(messages=messages)
+    pipeline_summary = response.choices[0].message.content
+
+    send_email(
+        subject="Daily GTM Pipeline Check",
+        body=pipeline_summary,
+        recipient_email=os.environ["NOTIFICATION_RECIPIENT_EMAIL"]
     )
 
-    return response.choices[0].message.content
+    return pipeline_summary
 
 
 if __name__ == "__main__":
