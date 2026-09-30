@@ -16,6 +16,7 @@ google-auth-httplib2==0.4.2
 google-auth-oauthlib==1.4.1
 googleapis-common-protos==1.75.4
 groq==1.7.0
+gunicorn==26.2.0
 h11==0.16.0
 h2==4.4.1
 hpack==4.2.0
