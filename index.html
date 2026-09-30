@@ -13,6 +13,8 @@
     --accent-dim: #2A9D6F;
     --text-primary: #E6EDF3;
     --text-secondary: #8B96A5;
+    --warning: #E3B341;
+    --danger: #F87171;
   }
 
   * {
@@ -23,6 +25,31 @@
     font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
     background: var(--bg);
     color: var(--text-primary);
+    margin: 0;
+    padding: 0;
+  }
+
+  #service-down-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: rgba(248, 81, 73, 0.15);
+    border-bottom: 1px solid rgba(248, 81, 73, 0.4);
+    color: var(--danger);
+    padding: 14px 20px;
+    font-size: 14px;
+    text-align: center;
+    transform: translateY(-100%);
+    transition: transform 0.3s ease;
+    z-index: 100;
+  }
+
+  #service-down-banner.visible {
+    transform: translateY(0);
+  }
+
+  .page-content {
     max-width: 720px;
     margin: 0 auto;
     padding: 60px 20px 100px;
@@ -122,10 +149,10 @@
     to { transform: rotate(360deg); }
   }
 
-  #error-box {
-    background: rgba(248, 81, 73, 0.1);
-    border: 1px solid rgba(248, 81, 73, 0.4);
-    color: #F87171;
+  #not-found-box {
+    background: rgba(227, 179, 65, 0.1);
+    border: 1px solid rgba(227, 179, 65, 0.4);
+    color: var(--warning);
     padding: 14px 16px;
     border-radius: 10px;
     margin-top: 12px;
@@ -176,24 +203,29 @@
 </head>
 <body>
 
-<div class="header">
-  <h1>GTM Intelligence Agent</h1>
-  <p class="subtitle">Autonomous company research, powered by Groq + live web search</p>
-</div>
+<div id="service-down-banner">Service is temporarily down. Please try again shortly.</div>
 
-<div class="search-row">
-  <input type="text" id="company-input" placeholder="Enter a company name, e.g. Anthropic" />
-  <button id="submit-btn" onclick="runResearch()">Research</button>
-</div>
+<div class="page-content">
+  <div class="header">
+    <h1>GTM Intelligence Agent</h1>
+    <p class="subtitle">Autonomous company research, powered by Groq + live web search</p>
+  </div>
 
-<p id="status"></p>
-<div id="error-box"></div>
-<div id="results"></div>
+  <div class="search-row">
+    <input type="text" id="company-input" placeholder="Enter a company name, e.g. Anthropic" />
+    <button id="submit-btn" onclick="runResearch()">Research</button>
+  </div>
+
+  <p id="status"></p>
+  <div id="not-found-box"></div>
+  <div id="results"></div>
+</div>
 
 <script>
 const API_URL = "http://127.0.0.1:5000/api/research";
 const PATIENCE_MESSAGE_DELAY_MS = 30000;
-const COOLDOWN_DURATION_MS = 150000; // 2.5 minutes;
+const COOLDOWN_DURATION_MS = 150000;
+const SERVICE_DOWN_BANNER_DURATION_MS = 8000;
 
 const FIELD_LABELS = {
   summary: "Summary",
@@ -204,8 +236,6 @@ const FIELD_LABELS = {
   draft_outreach_message: "Draft Outreach Message"
 };
 
-let cooldownIntervalId = null;
-
 document.getElementById("company-input").addEventListener("keydown", (event) => {
   if (event.key === "Enter") runResearch();
 });
@@ -214,7 +244,7 @@ async function runResearch() {
   const companyInput = document.getElementById("company-input");
   const submitButton = document.getElementById("submit-btn");
   const statusText = document.getElementById("status");
-  const errorBox = document.getElementById("error-box");
+  const notFoundBox = document.getElementById("not-found-box");
   const resultsContainer = document.getElementById("results");
 
   if (submitButton.disabled) return;
@@ -224,12 +254,12 @@ async function runResearch() {
 
   submitButton.disabled = true;
   submitButton.textContent = "Research";
-  statusText.innerHTML = '<span class="spinner"></span> Researching, this can take 10 to 20 seconds...';
-  errorBox.style.display = "none";
+  statusText.innerHTML = '<span class="spinner"></span> Researching, kindly wait for a bit...';
+  notFoundBox.style.display = "none";
   resultsContainer.innerHTML = "";
 
   const patienceTimer = setTimeout(() => {
-    statusText.innerHTML = '<span class="spinner"></span> Still working, larger or less common companies can take a little longer...';
+    statusText.innerHTML = '<span class="spinner"></span> Please hold on a little longer...';
   }, PATIENCE_MESSAGE_DELAY_MS);
 
   try {
@@ -239,33 +269,56 @@ async function runResearch() {
       body: JSON.stringify({ company_name: companyName })
     });
 
-    const briefData = await response.json();
+    const responseData = await response.json();
 
     if (!response.ok) {
-      throw new Error(briefData.error || "Something went wrong.");
+      if (responseData.error === "not_found") {
+        showNotFound(responseData.message || `'${companyName}' could not be found.`);
+      } else {
+        // Any backend error other than "not_found" (rate limits, provider
+        // outages, database failures, or anything unanticipated) surfaces
+        // identically here: the person using the tool doesn't need to know
+        // which one occurred, only that it's temporary and not their fault.
+        showServiceDownBanner();
+      }
+      statusText.textContent = "";
+      submitButton.disabled = false;
+      return;
     }
 
-    renderBrief(briefData);
+    renderBrief(responseData);
     statusText.textContent = "";
-  } catch (err) {
-    errorBox.textContent = err.message;
-    errorBox.style.display = "block";
+    startCooldown(submitButton);
+  } catch (networkError) {
+    // fetch() itself throwing (not the backend responding with an error
+    // status) means the request never reached the server at all, a true
+    // connectivity failure, which is exactly what the service-down banner
+    // is for too.
+    showServiceDownBanner();
     statusText.textContent = "";
+    submitButton.disabled = false;
   } finally {
     clearTimeout(patienceTimer);
-    startCooldown(submitButton);
   }
 }
 
+function showNotFound(message) {
+  const notFoundBox = document.getElementById("not-found-box");
+  notFoundBox.textContent = message;
+  notFoundBox.style.display = "block";
+}
+
+function showServiceDownBanner() {
+  const banner = document.getElementById("service-down-banner");
+  banner.classList.add("visible");
+  setTimeout(() => banner.classList.remove("visible"), SERVICE_DOWN_BANNER_DURATION_MS);
+}
+
 function startCooldown(submitButton) {
-  // A client-side cooldown between searches isn't a substitute for real rate
-  // limiting, but it prevents accidentally stacking requests faster than the
-  // backend's own multi-round tool-calling can clear, which is what was
-  // triggering Groq's per-minute limit during normal manual testing.
   let secondsRemaining = Math.ceil(COOLDOWN_DURATION_MS / 1000);
   submitButton.textContent = `Wait ${secondsRemaining}s`;
 
-  cooldownIntervalId = setInterval(() => {
+  const cooldownIntervalId = setInterval(() => {
     secondsRemaining -= 1;
     if (secondsRemaining <= 0) {
       clearInterval(cooldownIntervalId);
