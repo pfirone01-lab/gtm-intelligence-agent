@@ -5,9 +5,14 @@ from core.tools import query_supabase, send_email
 
 SYSTEM_PROMPT = """You are a GTM pipeline analyst. You will be given raw lead data
 from the most recent 7-day period and the 7 days before that. Compare the two
-periods and write 3 to 5 short sentences a sales manager could read in ten seconds.
-Call out anything that changed meaningfully: lead volume, conversion rate by source,
-or average score. Do not just repeat the numbers, say what they mean."""
+periods and identify 3 to 5 things that changed meaningfully: lead volume,
+conversion rate by source, or average score. Do not just repeat the numbers,
+say what they mean.
+
+Format your response as one short sentence per line, with a blank line between
+each point, so it reads as a readable list rather than one dense paragraph.
+Do not use bullet points or numbering, just plain sentences separated by blank
+lines."""
 
 
 def run_pipeline_check() -> str:
