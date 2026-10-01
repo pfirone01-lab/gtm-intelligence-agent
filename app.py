@@ -107,4 +107,4 @@ def research() -> tuple[Response, int]:
 
 
 if __name__ == "__main__":
-    app.run(port=5000, debug=True)
+    app.run(port=5000)
