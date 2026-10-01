@@ -90,6 +90,23 @@ def generate_briefing(research_context: str) -> dict:
         return {"error": "Could not parse briefing", "raw": raw_response_text}
 
 
+def _format_briefing_as_email_body(briefing: dict) -> str:
+    # A plain, readable layout is used here rather than raw JSON, since this
+    # text is the actual message a person reads in their inbox, not a
+    # machine-to-machine payload.
+    if briefing.get("error"):
+        return f"Could not generate a full briefing.\n\nDetails: {briefing['error']}\n{briefing.get('raw', '')}"
+
+    return (
+        f"Meeting: {briefing.get('meeting_title', 'Untitled meeting')}\n"
+        f"Who: {briefing.get('who', 'Unknown')}\n\n"
+        f"Company summary:\n{briefing.get('company_summary', 'N/A')}\n\n"
+        f"Recent news:\n{briefing.get('recent_news', 'N/A')}\n\n"
+        f"Talking point:\n{briefing.get('talking_point', 'N/A')}\n\n"
+        f"Suggested question:\n{briefing.get('suggested_question', 'N/A')}"
+    )
+
+
 def check_for_upcoming_meetings() -> list[dict]:
     events = get_upcoming_events(hours_ahead=1)
     briefings = []
@@ -107,7 +124,7 @@ def check_for_upcoming_meetings() -> list[dict]:
 
         send_email(
             subject=f"Meeting Briefing: {briefing['meeting_title']}",
-            body=json.dumps(briefing, indent=2),
+            body=_format_briefing_as_email_body(briefing),
             recipient_email=os.environ["NOTIFICATION_RECIPIENT_EMAIL"]
         )
 
