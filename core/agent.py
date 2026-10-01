@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from core.tools import get_current_time, tavily_search
 
 load_dotenv()
-client = Groq(api_key=os.environ["GROQ_API_KEY"])
+client = Groq(api_key=os.environ["GROQ_API_KEY"], max_retries=0)
 
 PRIMARY_MODEL = "openai/gpt-oss-20b"
 FALLBACK_MODEL = "openai/gpt-oss-120b"
